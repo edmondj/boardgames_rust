@@ -1,7 +1,10 @@
+#![feature(maybe_uninit_uninit_array, maybe_uninit_array_assume_init)]
+
 use boards::cards::french::{standard_52_deck, Card, Suite, KING};
 use boards::cards::FrenchDeck;
 use boards::random_engine::RandomEngine;
 use core::fmt;
+use std::mem::MaybeUninit;
 
 #[derive(Debug, Clone, Default)]
 pub struct Tableau {
@@ -69,7 +72,8 @@ impl Tableau {
 }
 
 pub type Foundations = [u8; 4];
-pub type Tableaus = [Tableau; 7];
+pub const TABLEAUS_COUNT: usize = 7;
+pub type Tableaus = [Tableau; TABLEAUS_COUNT];
 
 pub struct State {
     draw_pile: FrenchDeck,
@@ -106,17 +110,14 @@ impl State {
         FrenchDeck::shuffle(&mut draw_pile, rand);
 
         let tableaus = unsafe {
-            let mut arr: Tableaus = std::mem::MaybeUninit::uninit().assume_init();
+            let mut arr = MaybeUninit::<Tableau>::uninit_array::<TABLEAUS_COUNT>();
             for i in 0..arr.len() {
-                std::ptr::write(
-                    &mut arr[i],
-                    Tableau {
-                        pile: draw_pile.draw_many(i + 1).collect(),
-                        upturned: 1,
-                    },
-                )
+                arr[i].write(Tableau {
+                    pile: draw_pile.draw_many(i + 1).collect(),
+                    upturned: 1,
+                });
             }
-            arr
+            MaybeUninit::array_assume_init(arr)
         };
 
         Self {
