@@ -1,5 +1,3 @@
-#![feature(maybe_uninit_uninit_array, maybe_uninit_array_assume_init)]
-
 use boards::cards::french::{standard_52_deck, Card, Suite, KING};
 use boards::cards::FrenchDeck;
 use boards::random_engine::RandomEngine;
@@ -109,15 +107,16 @@ impl State {
         let mut draw_pile = standard_52_deck();
         FrenchDeck::shuffle(&mut draw_pile, rand);
 
-        let tableaus = unsafe {
-            let mut arr = MaybeUninit::<Tableau>::uninit_array::<TABLEAUS_COUNT>();
+        let tableaus = {
+            let mut arr: [MaybeUninit<Tableau>; TABLEAUS_COUNT] =
+                unsafe { MaybeUninit::uninit().assume_init() };
             for i in 0..arr.len() {
                 arr[i].write(Tableau {
                     pile: draw_pile.draw_many(i + 1).collect(),
                     upturned: 1,
                 });
             }
-            MaybeUninit::array_assume_init(arr)
+            unsafe { std::mem::transmute(arr) }
         };
 
         Self {
