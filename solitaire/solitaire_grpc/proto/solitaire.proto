@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package solitaire;
+
+enum Suite {
+  UNDEFINED = 0;
+  Hearts = 1;
+  Diamonds = 2;
+  Clubs = 3;
+  Spades = 4;
+}
+
+message Card {
+  Suite suite = 1;
+  uint32 rank = 2;
+}
+
+message Foundation {
+  Suite suite = 1;
+  optional uint32 value = 2;
+}
+
+message Tableau {
+  uint64 downfaced_len = 1;
+  repeated Card upturned = 2;
+}
+
+message State {
+  uint32 draw_pile_size = 1;
+  optional Card upturned = 2;
+  repeated Foundation foundations = 3;
+  repeated Tableau tableaus = 4;
+}
+
+message Action {
+
+  message Draw {}
+
+  message BuildFoundation {
+
+    message Upturned {}
+
+    message Tableau { uint32 index = 1; }
+
+    oneof source {
+      Upturned upturned = 1;
+      Tableau tableau = 2;
+    }
+  }
+
+  message BuildTableau {
+    message Upturned {}
+
+    message Tableau {
+      uint32 index = 1;
+      uint32 size = 2;
+    }
+
+    oneof source {
+      Upturned upturned = 1;
+      Tableau tableau = 2;
+    }
+
+    uint32 destination_index = 3;
+  }
+}
+
+message CreateGameRequest {}
+message CreateGameResponse {
+  string id = 1;
+  State state = 2;
+}
+
+message DestroyGameRequest { string id = 1; }
+message DestroyGameResponse {}
+
+message ActRequest {
+  string id = 1;
+  Action action = 2;
+}
+message ActResponse {
+  bool victory = 1;
+  State state = 2;
+}
+
+message WatchRequest { string id = 1; }
+message WatchResponse {
+  optional Action action = 1;
+  State state = 2;
+}
+
+service Solitaire {
+  rpc CreateGame(CreateGameRequest) returns (CreateGameResponse);
+  rpc DestroyGame(DestroyGameRequest) returns (DestroyGameResponse);
+  rpc Act(ActRequest) returns (ActResponse);
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+}

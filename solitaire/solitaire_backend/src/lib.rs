@@ -1,8 +1,10 @@
-use boards::cards::french::{standard_52_deck, Card, Suite, KING};
+use boards::cards::french::{standard_52_deck, KING};
+pub use boards::cards::french::{Card, Suite};
 use boards::cards::FrenchDeck;
 use boards::random_engine::RandomEngine;
 use core::fmt;
 use std::mem::MaybeUninit;
+use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, Default)]
 pub struct Tableau {
@@ -29,6 +31,10 @@ impl Tableau {
         } else {
             None
         }
+    }
+
+    pub fn upturned_iter(&self) -> impl Iterator<Item = &Card> {
+        self.pile.iter().skip(self.downfaced_len())
     }
 
     pub fn bottom(&self) -> Option<&Card> {
@@ -69,7 +75,60 @@ impl Tableau {
     }
 }
 
-pub type Foundations = [u8; 4];
+#[derive(Default)]
+pub struct Foundations {
+    foundations: [u8; 4],
+}
+
+pub struct Foundation {
+    pub suite: Suite,
+    pub value: u8,
+}
+
+impl Foundations {
+    pub fn iter(&self) -> impl Iterator<Item = Foundation> {
+        self.foundations.into_iter().enumerate().map(|(i, value)| {
+            use Suite::*;
+            Foundation {
+                suite: match i {
+                    0 => Hearts,
+                    1 => Diamonds,
+                    2 => Clubs,
+                    3 => Spades,
+                    _ => panic!("This should not happend"),
+                },
+                value,
+            }
+        })
+    }
+}
+
+impl Index<Suite> for Foundations {
+    type Output = u8;
+
+    fn index(&self, index: Suite) -> &Self::Output {
+        use Suite::*;
+        match index {
+            Hearts => &self.foundations[0],
+            Diamonds => &self.foundations[1],
+            Clubs => &self.foundations[2],
+            Spades => &self.foundations[3],
+        }
+    }
+}
+
+impl IndexMut<Suite> for Foundations {
+    fn index_mut(&mut self, index: Suite) -> &mut Self::Output {
+        use Suite::*;
+        match index {
+            Hearts => &mut self.foundations[0],
+            Diamonds => &mut self.foundations[1],
+            Clubs => &mut self.foundations[2],
+            Spades => &mut self.foundations[3],
+        }
+    }
+}
+
 pub const TABLEAUS_COUNT: usize = 7;
 pub type Tableaus = [Tableau; TABLEAUS_COUNT];
 
@@ -122,7 +181,7 @@ impl State {
         Self {
             draw_pile,
             waste: FrenchDeck::new(),
-            foundations: [0; 4],
+            foundations: Foundations::default(),
             tableaus,
         }
     }
@@ -173,13 +232,7 @@ impl State {
                     }
                 };
                 if let Some(c) = maybe_card {
-                    use Suite::*;
-                    let dest: &mut u8 = match c.suite() {
-                        Hearts => &mut self.foundations[0],
-                        Diamonds => &mut self.foundations[1],
-                        Clubs => &mut self.foundations[2],
-                        Spades => &mut self.foundations[3],
-                    };
+                    let dest: &mut u8 = &mut self.foundations[c.suite()];
                     if c.rank() != *dest + 1 {
                         Failed(String::from("Invalid rank"))
                     } else {
@@ -191,7 +244,7 @@ impl State {
                                 self.waste.draw();
                             }
                         };
-                        if self.foundations.iter().all(|r| r == &KING) {
+                        if self.foundations.iter().all(|f| f.value == KING) {
                             Victory
                         } else {
                             OnGoing
@@ -256,16 +309,9 @@ impl fmt::Display for State {
             Some(c) => write!(f, "{: >3}", c)?,
         }
         write!(f, "    ")?;
-        for i in 0..self.foundations().len() {
-            let foundation = self.foundations()[i];
-            use Suite::*;
-            let suite = match i {
-                0 => Hearts,
-                1 => Diamonds,
-                2 => Clubs,
-                3 => Spades,
-                _ => panic!(),
-            };
+        use Suite::*;
+        for suite in [Hearts, Diamonds, Clubs, Spades] {
+            let foundation = self.foundations()[suite];
             match foundation {
                 0 => write!(f, " __{}", suite)?,
                 r => write!(f, " {: >3}", Card::new_unchecked(r, suite))?,
