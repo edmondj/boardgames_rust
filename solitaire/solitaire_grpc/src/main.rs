@@ -2,6 +2,7 @@ use boards::random_engine::DefaultRandomEngine;
 use futures_core;
 use solitaire_backend::{Card, Foundation, State, Suite, Tableau};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Mutex;
 use tokio;
 use uuid::Uuid;
@@ -113,21 +114,25 @@ impl proto::solitaire::solitaire_server::Solitaire for SolitaireService {
         let mut state = self.state.lock().unwrap();
         state.games.insert(id, ActiveGame::default());
         let ref game_state = state.games.get(&id).unwrap();
-        Ok(
-            tonic::Response::<proto::solitaire::CreateGameResponse>::new(
-                proto::solitaire::CreateGameResponse {
-                    id: id.to_string(),
-                    state: Some((&game_state.state).into()),
-                },
-            ),
-        )
+        Ok(tonic::Response::new(proto::solitaire::CreateGameResponse {
+            id: id.to_string(),
+            state: Some((&game_state.state).into()),
+        }))
     }
 
     async fn destroy_game(
         &self,
         request: tonic::Request<proto::solitaire::DestroyGameRequest>,
     ) -> Result<tonic::Response<proto::solitaire::DestroyGameResponse>, tonic::Status> {
-        todo!();
+        let id = Uuid::from_str(&request.get_ref().id)
+            .map_err(|err| tonic::Status::invalid_argument(format!("Invalid id: {err}")))?;
+        let mut state = self.state.lock().unwrap();
+        match state.games.remove(&id) {
+            None => Err(tonic::Status::not_found(format!("Key not found: {id}"))),
+            _ => Ok(tonic::Response::new(
+                proto::solitaire::DestroyGameResponse {},
+            )),
+        }
     }
 
     async fn act(
