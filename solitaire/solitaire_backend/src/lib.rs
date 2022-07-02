@@ -75,11 +75,12 @@ impl Tableau {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct Foundations {
     foundations: [u8; 4],
 }
 
+#[derive(Copy, Clone)]
 pub struct Foundation {
     pub suite: Suite,
     pub value: u8,
@@ -132,6 +133,7 @@ impl IndexMut<Suite> for Foundations {
 pub const TABLEAUS_COUNT: usize = 7;
 pub type Tableaus = [Tableau; TABLEAUS_COUNT];
 
+#[derive(Clone)]
 pub struct State {
     draw_pile: FrenchDeck,
     waste: FrenchDeck,

@@ -32,6 +32,8 @@ pub struct State {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
+    #[prost(oneof="action::Action", tags="1, 2, 3")]
+    pub action: ::core::option::Option<action::Action>,
 }
 /// Nested message and enum types in `Action`.
 pub mod action {
@@ -87,6 +89,15 @@ pub mod action {
             #[prost(message, tag="2")]
             Tableau(Tableau),
         }
+    }
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Action {
+        #[prost(message, tag="1")]
+        Draw(Draw),
+        #[prost(message, tag="2")]
+        BuildFoundation(BuildFoundation),
+        #[prost(message, tag="3")]
+        BuildTableau(BuildTableau),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]

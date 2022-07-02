@@ -63,6 +63,12 @@ message Action {
 
     uint32 destination_index = 3;
   }
+
+  oneof action {
+    Draw draw = 1;
+    BuildFoundation build_foundation = 2;
+    BuildTableau build_tableau = 3;
+  }
 }
 
 message CreateGameRequest {}
