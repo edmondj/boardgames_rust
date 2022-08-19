@@ -1,12 +1,10 @@
 use solitaire_backend::{Action, Card, Foundation, Game, MemoryGame, Suite, Tableau};
 
 pub mod proto {
-    pub mod solitaire {
-        tonic::include_proto!("solitaire");
-    }
+    tonic::include_proto!("solitaire");
 }
 
-impl From<Suite> for proto::solitaire::Suite {
+impl From<Suite> for proto::Suite {
     fn from(src: Suite) -> Self {
         match src {
             Suite::Hearts => Self::Hearts,
@@ -17,11 +15,11 @@ impl From<Suite> for proto::solitaire::Suite {
     }
 }
 
-fn suite_to_proto(suite: proto::solitaire::Suite) -> i32 {
+fn suite_to_proto(suite: proto::Suite) -> i32 {
     suite.into()
 }
 
-impl From<&Card> for proto::solitaire::Card {
+impl From<&Card> for proto::Card {
     fn from(src: &Card) -> Self {
         Self {
             suite: suite_to_proto(src.suite().into()),
@@ -30,7 +28,7 @@ impl From<&Card> for proto::solitaire::Card {
     }
 }
 
-impl From<Foundation> for proto::solitaire::Foundation {
+impl From<Foundation> for proto::Foundation {
     fn from(src: Foundation) -> Self {
         Self {
             suite: suite_to_proto(src.suite.into()),
@@ -42,7 +40,7 @@ impl From<Foundation> for proto::solitaire::Foundation {
     }
 }
 
-impl From<&Tableau> for proto::solitaire::Tableau {
+impl From<&Tableau> for proto::Tableau {
     fn from(src: &Tableau) -> Self {
         Self {
             downfaced_len: src.downfaced_len as u64,
@@ -51,7 +49,7 @@ impl From<&Tableau> for proto::solitaire::Tableau {
     }
 }
 
-impl From<&MemoryGame> for proto::solitaire::State {
+impl From<&MemoryGame> for proto::State {
     fn from(src: &MemoryGame) -> Self {
         Self {
             draw_pile_size: src.draw_pile_size() as u32,
@@ -62,10 +60,10 @@ impl From<&MemoryGame> for proto::solitaire::State {
     }
 }
 
-impl TryInto<Action> for &proto::solitaire::Action {
+impl TryInto<Action> for &proto::Action {
     type Error = tonic::Status;
     fn try_into(self) -> Result<Action, Self::Error> {
-        use proto::solitaire::action::*;
+        use proto::action::*;
         match self
             .action
             .as_ref()
