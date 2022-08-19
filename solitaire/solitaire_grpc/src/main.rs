@@ -1,5 +1,5 @@
 use boards::random_engine::DefaultRandomEngine;
-use solitaire_backend::{ActionResult, State};
+use solitaire_backend::{ActionResult, Game, MemoryGame};
 use std::collections::HashMap;
 use std::str::FromStr;
 use tokio;
@@ -12,14 +12,14 @@ use serial::*;
 type WatchMessage = Result<proto::solitaire::WatchResponse, tonic::Status>;
 
 struct ActiveGame {
-    state: State,
+    state: MemoryGame,
     streams: Vec<mpsc::Sender<WatchMessage>>,
 }
 
 impl Default for ActiveGame {
     fn default() -> Self {
         Self {
-            state: State::new(&mut DefaultRandomEngine::new()),
+            state: MemoryGame::new(&mut DefaultRandomEngine::new()),
             streams: Vec::default(),
         }
     }

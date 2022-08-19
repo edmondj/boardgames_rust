@@ -1,7 +1,7 @@
 use crate::cards;
 use std::fmt;
 
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Hash, Eq)]
 pub enum Suite {
     Hearts,
     Diamonds,

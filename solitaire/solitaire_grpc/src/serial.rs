@@ -1,8 +1,8 @@
-use solitaire_backend::{Action, Card, Foundation, State, Suite, Tableau};
+use solitaire_backend::{Action, Card, Foundation, Game, MemoryGame, Suite, Tableau};
 
 pub mod proto {
     pub mod solitaire {
-        include!("proto/solitaire.rs");
+        tonic::include_proto!("solitaire");
     }
 }
 
@@ -45,17 +45,17 @@ impl From<Foundation> for proto::solitaire::Foundation {
 impl From<&Tableau> for proto::solitaire::Tableau {
     fn from(src: &Tableau) -> Self {
         Self {
-            downfaced_len: src.downfaced_len() as u64,
-            upturned: src.upturned_iter().map(|u| u.into()).collect(),
+            downfaced_len: src.downfaced_len as u64,
+            upturned: src.upturned.iter().map(|u| u.into()).collect(),
         }
     }
 }
 
-impl From<&State> for proto::solitaire::State {
-    fn from(src: &State) -> Self {
+impl From<&MemoryGame> for proto::solitaire::State {
+    fn from(src: &MemoryGame) -> Self {
         Self {
-            draw_pile_size: src.draw_pile().len() as u32,
-            upturned: src.upturned().map(|u| u.into()),
+            draw_pile_size: src.draw_pile_size() as u32,
+            upturned: src.upturned().as_ref().map(|u| u.into()),
             foundations: src.foundations().iter().map(|f| f.into()).collect(),
             tableaus: src.tableaus().iter().map(|t| t.into()).collect(),
         }

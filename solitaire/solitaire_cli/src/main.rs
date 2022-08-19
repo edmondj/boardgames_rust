@@ -11,7 +11,7 @@ enum ParseActionError {
 
 fn main() {
     let mut rand = DefaultRandomEngine::new();
-    let mut state = State::new(&mut rand);
+    let mut state = MemoryGame::new(&mut rand);
 
     loop {
         println!("{}", state);

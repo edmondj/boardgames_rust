@@ -7,25 +7,25 @@ use std::mem::MaybeUninit;
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, Default)]
-pub struct Tableau {
+struct MemoryTableau {
     pile: Vec<Card>,
     upturned: usize,
 }
 
-impl Tableau {
-    pub fn len(&self) -> usize {
+impl MemoryTableau {
+    fn len(&self) -> usize {
         self.pile.len()
     }
 
-    pub fn upturned_len(&self) -> usize {
+    fn upturned_len(&self) -> usize {
         self.upturned
     }
 
-    pub fn downfaced_len(&self) -> usize {
+    fn downfaced_len(&self) -> usize {
         self.len() - self.upturned_len()
     }
 
-    pub fn upturned(&self, i: usize) -> Option<&Card> {
+    fn upturned(&self, i: usize) -> Option<&Card> {
         if i < self.upturned {
             Some(&self.pile[self.downfaced_len() + i])
         } else {
@@ -33,11 +33,11 @@ impl Tableau {
         }
     }
 
-    pub fn upturned_iter(&self) -> impl Iterator<Item = &Card> {
+    fn upturned_iter(&self) -> impl Iterator<Item = &Card> {
         self.pile.iter().skip(self.downfaced_len())
     }
 
-    pub fn bottom(&self) -> Option<&Card> {
+    fn bottom(&self) -> Option<&Card> {
         if self.upturned > 0 {
             self.pile.last()
         } else {
@@ -73,6 +73,11 @@ impl Tableau {
         self.upturned = self.upturned.saturating_sub(1);
         self.maybe_upturn();
     }
+}
+
+pub struct Tableau {
+    pub downfaced_len: usize,
+    pub upturned: Vec<Card>,
 }
 
 #[derive(Default, Copy, Clone)]
@@ -131,84 +136,48 @@ impl IndexMut<Suite> for Foundations {
 }
 
 pub const TABLEAUS_COUNT: usize = 7;
-pub type Tableaus = [Tableau; TABLEAUS_COUNT];
+
+pub trait Game {
+    fn draw_pile_size(&self) -> usize;
+    fn upturned(&self) -> Option<Card>;
+    fn foundations(&self) -> Foundations;
+    fn tableaus<'a>(&'a self) -> Vec<Tableau>;
+
+    fn act(&mut self, action: Action) -> ActionResult;
+}
 
 #[derive(Clone)]
-pub struct State {
+pub struct MemoryGame {
     draw_pile: FrenchDeck,
     waste: FrenchDeck,
     foundations: Foundations,
-    tableaus: Tableaus,
+    tableaus: [MemoryTableau; TABLEAUS_COUNT],
 }
 
-pub enum FoundationSource {
-    Upturned,
-    Tableau(usize),
-}
-
-pub enum TableauSource {
-    Upturned,
-    Tableau { index: usize, size: usize },
-}
-
-pub enum Action {
-    Draw,
-    BuildFoundation { src: FoundationSource },
-    BuildTableau { src: TableauSource, dst: usize },
-}
-
-pub enum ActionResult {
-    Victory,
-    OnGoing,
-    Failed(String),
-}
-
-impl State {
-    pub fn new(rand: &mut impl RandomEngine) -> Self {
-        let mut draw_pile = standard_52_deck();
-        FrenchDeck::shuffle(&mut draw_pile, rand);
-
-        let tableaus = {
-            let mut arr: [MaybeUninit<Tableau>; TABLEAUS_COUNT] =
-                unsafe { MaybeUninit::uninit().assume_init() };
-            for i in 0..arr.len() {
-                arr[i].write(Tableau {
-                    pile: draw_pile.draw_many(i + 1).collect(),
-                    upturned: 1,
-                });
-            }
-            unsafe { std::mem::transmute(arr) }
-        };
-
-        Self {
-            draw_pile,
-            waste: FrenchDeck::new(),
-            foundations: Foundations::default(),
-            tableaus,
-        }
+impl Game for MemoryGame {
+    fn draw_pile_size(&self) -> usize {
+        self.draw_pile.len()
     }
 
-    pub fn draw_pile(&self) -> &FrenchDeck {
-        &self.draw_pile
+    fn upturned(&self) -> Option<Card> {
+        self.waste.peek().map(|c| *c)
     }
 
-    pub fn upturned(&self) -> Option<&Card> {
-        self.waste.peek()
+    fn foundations(&self) -> Foundations {
+        self.foundations
     }
 
-    pub fn waste_len(&self) -> usize {
-        self.waste.len().saturating_sub(1)
+    fn tableaus<'a>(&'a self) -> Vec<Tableau> {
+        self.tableaus
+            .iter()
+            .map(|t| Tableau {
+                downfaced_len: t.downfaced_len(),
+                upturned: t.upturned_iter().map(|&c| c).collect(),
+            })
+            .collect()
     }
 
-    pub fn foundations(&self) -> &Foundations {
-        &self.foundations
-    }
-
-    pub fn tableaus(&self) -> &Tableaus {
-        &self.tableaus
-    }
-
-    pub fn act(&mut self, action: Action) -> ActionResult {
+    fn act(&mut self, action: Action) -> ActionResult {
         use Action::*;
         use ActionResult::*;
         match action {
@@ -259,7 +228,7 @@ impl State {
             BuildTableau { src, dst } => {
                 use TableauSource::*;
                 let joint = match src {
-                    Upturned => self.upturned(),
+                    Upturned => self.waste.peek(),
                     Tableau { index, size } => {
                         if index >= self.tableaus.len()
                             || size > self.tableaus[index].upturned_len()
@@ -303,55 +272,111 @@ impl State {
     }
 }
 
-impl fmt::Display for State {
+pub enum FoundationSource {
+    Upturned,
+    Tableau(usize),
+}
+
+pub enum TableauSource {
+    Upturned,
+    Tableau { index: usize, size: usize },
+}
+
+pub enum Action {
+    Draw,
+    BuildFoundation { src: FoundationSource },
+    BuildTableau { src: TableauSource, dst: usize },
+}
+
+pub enum ActionResult {
+    Victory,
+    OnGoing,
+    Failed(String),
+}
+
+impl MemoryGame {
+    pub fn new(rand: &mut impl RandomEngine) -> Self {
+        let mut draw_pile = standard_52_deck();
+        FrenchDeck::shuffle(&mut draw_pile, rand);
+
+        let tableaus = {
+            let mut arr: [MaybeUninit<MemoryTableau>; TABLEAUS_COUNT] =
+                unsafe { MaybeUninit::uninit().assume_init() };
+            for i in 0..arr.len() {
+                arr[i].write(MemoryTableau {
+                    pile: draw_pile.draw_many(i + 1).collect(),
+                    upturned: 1,
+                });
+            }
+            unsafe { std::mem::transmute(arr) }
+        };
+
+        Self {
+            draw_pile,
+            waste: FrenchDeck::new(),
+            foundations: Foundations::default(),
+            tableaus,
+        }
+    }
+}
+
+pub fn display<T>(game: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result
+where
+    T: Game,
+{
+    write!(f, "{: >3} ", game.draw_pile_size())?;
+    match game.upturned() {
+        None => write!(f, "___")?,
+        Some(c) => write!(f, "{: >3}", c)?,
+    }
+    write!(f, "    ")?;
+    use Suite::*;
+    for suite in [Hearts, Diamonds, Clubs, Spades] {
+        let foundation = game.foundations()[suite];
+        match foundation {
+            0 => write!(f, " __{}", suite)?,
+            r => write!(f, " {: >3}", Card::new_unchecked(r, suite))?,
+        }
+    }
+    writeln!(f)?;
+    writeln!(f)?;
+    for line in 0.. {
+        #[derive(PartialEq)]
+        enum PileState<'a> {
+            Downturned,
+            Upturned(&'a Card),
+            Done,
+        }
+
+        let tableaus = game.tableaus();
+        let pile_states = tableaus.iter().map(|t| {
+            if line < t.downfaced_len {
+                PileState::Downturned
+            } else if line - t.downfaced_len < t.upturned.len() {
+                PileState::Upturned(t.upturned.get(line - t.downfaced_len).unwrap())
+            } else {
+                PileState::Done
+            }
+        });
+
+        if pile_states.clone().all(|s| s == PileState::Done) {
+            break;
+        }
+
+        for s in pile_states {
+            match s {
+                PileState::Downturned => write!(f, "  ? ")?,
+                PileState::Upturned(c) => write!(f, "{: >3} ", c)?,
+                PileState::Done => write!(f, "    ")?,
+            }
+        }
+        writeln!(f)?;
+    }
+    Ok(())
+}
+
+impl fmt::Display for MemoryGame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{: >3} ", self.draw_pile().len())?;
-        match self.upturned() {
-            None => write!(f, "___")?,
-            Some(c) => write!(f, "{: >3}", c)?,
-        }
-        write!(f, "    ")?;
-        use Suite::*;
-        for suite in [Hearts, Diamonds, Clubs, Spades] {
-            let foundation = self.foundations()[suite];
-            match foundation {
-                0 => write!(f, " __{}", suite)?,
-                r => write!(f, " {: >3}", Card::new_unchecked(r, suite))?,
-            }
-        }
-        writeln!(f)?;
-        writeln!(f)?;
-        for line in 0.. {
-            #[derive(PartialEq)]
-            enum PileState<'a> {
-                Downturned,
-                Upturned(&'a Card),
-                Done,
-            }
-
-            let pile_states = self.tableaus().iter().map(|t| {
-                if line < t.downfaced_len() {
-                    PileState::Downturned
-                } else if line < t.len() {
-                    PileState::Upturned(t.upturned(line - t.downfaced_len()).unwrap())
-                } else {
-                    PileState::Done
-                }
-            });
-
-            if pile_states.clone().all(|s| s == PileState::Done) {
-                break;
-            }
-
-            for s in pile_states {
-                match s {
-                    PileState::Downturned => write!(f, "  ? ")?,
-                    PileState::Upturned(c) => write!(f, "{: >3} ", c)?,
-                    PileState::Done => write!(f, "    ")?,
-                }
-            }
-            writeln!(f)?;
-        }
-        Ok(())
+        display(self, f)
     }
 }

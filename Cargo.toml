@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "boards",
+    "solitaire/solitaire_backend",
+    "solitaire/solitaire_cli",
+    "solitaire/solitaire_grpc",
+]
