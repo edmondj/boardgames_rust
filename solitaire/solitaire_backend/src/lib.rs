@@ -1,10 +1,14 @@
+use async_trait::async_trait;
 use boards::cards::french::{standard_52_deck, KING};
 pub use boards::cards::french::{Card, Suite};
 use boards::cards::FrenchDeck;
 use boards::random_engine::RandomEngine;
 use core::fmt;
+use lazy_static::lazy_static;
+use regex::Regex;
 use std::mem::MaybeUninit;
 use std::ops::{Index, IndexMut};
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Default)]
 struct MemoryTableau {
@@ -82,7 +86,7 @@ pub struct Tableau {
 
 #[derive(Default, Copy, Clone)]
 pub struct Foundations {
-    foundations: [u8; 4],
+    pub foundations: [u8; 4],
 }
 
 #[derive(Copy, Clone)]
@@ -137,13 +141,14 @@ impl IndexMut<Suite> for Foundations {
 
 pub const TABLEAUS_COUNT: usize = 7;
 
+#[async_trait]
 pub trait Game {
     fn draw_pile_size(&self) -> usize;
     fn upturned(&self) -> Option<Card>;
     fn foundations(&self) -> Foundations;
     fn tableaus<'a>(&'a self) -> Vec<Tableau>;
 
-    fn act(&mut self, action: Action) -> ActionResult;
+    async fn act(&mut self, action: Action) -> ActionResult;
 }
 
 #[derive(Clone)]
@@ -154,6 +159,7 @@ pub struct MemoryGame {
     tableaus: [MemoryTableau; TABLEAUS_COUNT],
 }
 
+#[async_trait]
 impl Game for MemoryGame {
     fn draw_pile_size(&self) -> usize {
         self.draw_pile.len()
@@ -177,7 +183,7 @@ impl Game for MemoryGame {
             .collect()
     }
 
-    fn act(&mut self, action: Action) -> ActionResult {
+    async fn act(&mut self, action: Action) -> ActionResult {
         use Action::*;
         use ActionResult::*;
         match action {
@@ -286,6 +292,45 @@ pub enum Action {
     Draw,
     BuildFoundation { src: FoundationSource },
     BuildTableau { src: TableauSource, dst: usize },
+}
+
+pub enum ParseActionError {
+    Invalid(String),
+}
+
+impl FromStr for Action {
+    type Err = ParseActionError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        lazy_static! {
+            static ref BUILD: Regex = Regex::new(r"build (\d+|u)").unwrap();
+            static ref MOVE: Regex = Regex::new(r"move ((\d+) (\d+)|u) (\d+)").unwrap();
+        }
+
+        if s == "draw" {
+            Ok(Action::Draw)
+        } else if let Some(cap) = BUILD.captures(&s) {
+            Ok(Action::BuildFoundation {
+                src: match cap.get(1).unwrap().as_str() {
+                    "u" => FoundationSource::Upturned,
+                    s => FoundationSource::Tableau(s.parse().unwrap()),
+                },
+            })
+        } else if let Some(cap) = MOVE.captures(&s) {
+            Ok(Action::BuildTableau {
+                src: match cap.get(1).unwrap().as_str() {
+                    "u" => TableauSource::Upturned,
+                    _ => TableauSource::Tableau {
+                        index: cap.get(2).unwrap().as_str().parse().unwrap(),
+                        size: cap.get(3).unwrap().as_str().parse().unwrap(),
+                    },
+                },
+                dst: cap.get(4).unwrap().as_str().parse().unwrap(),
+            })
+        } else {
+            Err(ParseActionError::Invalid(format!("Unknown command {}", s)))
+        }
+    }
 }
 
 pub enum ActionResult {

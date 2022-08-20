@@ -44,8 +44,8 @@ impl fmt::Display for Suite {
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub struct Card {
-    rank: u8,
-    suite: Suite,
+    pub rank: u8,
+    pub suite: Suite,
 }
 
 struct Rank(u8);

@@ -119,7 +119,7 @@ impl solitaire_grpc::proto::solitaire_server::Solitaire for SolitaireService {
                 let action = (&proto_action).try_into()?;
                 let mut state = self.state.lock().await;
                 let ref mut game = state.get_mut_game(&id)?;
-                let result = game.state.act(action);
+                let result = game.state.act(action).await;
                 if let ActionResult::Failed(s) = result {
                     Err(tonic::Status::failed_precondition(format!(
                         "Invalid move: {s}"

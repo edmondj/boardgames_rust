@@ -1,20 +1,67 @@
 use boards::random_engine::DefaultRandomEngine;
-use lazy_static::lazy_static;
-use regex::Regex;
 use solitaire_backend::*;
 use std::io::Write;
-use std::result::Result;
+use std::str::FromStr;
+use std::{env, fmt};
+mod grpc;
+use grpc::{GrpcGame, NewGameError};
 
-enum ParseActionError {
-    Invalid(String),
+pub trait DisplayableGame: Game + fmt::Display {}
+
+impl DisplayableGame for MemoryGame {}
+impl DisplayableGame for GrpcGame {}
+
+fn new_memory_game() -> Box<dyn DisplayableGame> {
+    let mut rand = DefaultRandomEngine::new();
+    Box::new(MemoryGame::new(&mut rand))
 }
 
-fn main() {
-    let mut rand = DefaultRandomEngine::new();
-    let mut state = MemoryGame::new(&mut rand);
+async fn new_grpc_game(addr: String) -> Result<Box<dyn DisplayableGame>, NewGameError> {
+    GrpcGame::new(addr)
+        .await
+        .map(|g| -> Box<dyn DisplayableGame> {
+            println!("Starting grpc game {}", g.id());
+            Box::new(g)
+        })
+}
+
+enum GameOption {
+    Memory,
+    Grpc(String),
+}
+
+#[tokio::main]
+async fn main() {
+    let mut args = env::args().skip(1);
+    let mut game_option = None;
+    while let Some(arg) = args.next() {
+        if arg == "--grpc" {
+            match args.next() {
+                None => {
+                    panic!("--grpc was given without an address");
+                }
+                Some(addr) => {
+                    if game_option.is_some() {
+                        panic!("--grpc was given more than once");
+                    }
+                    game_option = Some(GameOption::Grpc(addr));
+                }
+            }
+        }
+    }
+
+    let game_option = game_option.unwrap_or(GameOption::Memory);
+
+    let mut game = match game_option {
+        GameOption::Memory => new_memory_game(),
+        GameOption::Grpc(addr) => match new_grpc_game(addr).await {
+            Ok(game) => game,
+            Err(e) => panic!("Failed to create grpc game: {:?}", e),
+        },
+    };
 
     loop {
-        println!("{}", state);
+        println!("{}", game);
         println!("[0] [1] [2] [3] [4] [5] [6]");
         print!("> ");
         std::io::stdout().flush().unwrap();
@@ -25,50 +72,20 @@ fn main() {
 
         let line = line.trim();
 
-        lazy_static! {
-            static ref BUILD: Regex = Regex::new(r"build (\d+|u)").unwrap();
-            static ref MOVE: Regex = Regex::new(r"move ((\d+) (\d+)|u) (\d+)").unwrap();
-        }
-
-        let action: Result<Action, ParseActionError> = if line == "draw" {
-            Ok(Action::Draw)
-        } else if let Some(cap) = BUILD.captures(&line) {
-            Ok(Action::BuildFoundation {
-                src: match cap.get(1).unwrap().as_str() {
-                    "u" => FoundationSource::Upturned,
-                    s => FoundationSource::Tableau(s.parse().unwrap()),
-                },
-            })
-        } else if let Some(cap) = MOVE.captures(&line) {
-            Ok(Action::BuildTableau {
-                src: match cap.get(1).unwrap().as_str() {
-                    "u" => TableauSource::Upturned,
-                    _ => TableauSource::Tableau {
-                        index: cap.get(2).unwrap().as_str().parse().unwrap(),
-                        size: cap.get(3).unwrap().as_str().parse().unwrap(),
-                    },
-                },
-                dst: cap.get(4).unwrap().as_str().parse().unwrap(),
-            })
-        } else if line == "quit" {
-            break;
-        } else {
-            Err(ParseActionError::Invalid(format!(
-                "Unknown command {}",
-                line
-            )))
-        };
-
-        use ActionResult::*;
-        match action {
-            Err(ParseActionError::Invalid(s)) => println!("{}", s),
-            Ok(action) => match state.act(action) {
-                Victory => {
+        match Action::from_str(line) {
+            Err(ParseActionError::Invalid(s)) => {
+                if line == "quit" {
+                    break;
+                }
+                println!("{}", s)
+            }
+            Ok(action) => match game.act(action).await {
+                ActionResult::Victory => {
                     println!("Congratulations! You won!");
                     break;
                 }
-                Failed(s) => println!("Invalid move: {}", s),
-                OnGoing => (),
+                ActionResult::Failed(s) => println!("Invalid move: {}", s),
+                ActionResult::OnGoing => (),
             },
         }
     }

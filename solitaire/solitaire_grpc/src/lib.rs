@@ -1,7 +1,14 @@
-use solitaire_backend::{Action, Card, Foundation, Game, MemoryGame, Suite, Tableau};
+use solitaire_backend::{
+    Action, Card, Foundation, FoundationSource, Game, MemoryGame, Suite, Tableau,
+};
 
 pub mod proto {
     tonic::include_proto!("solitaire");
+}
+
+#[derive(Debug)]
+pub enum ProtoError {
+    InvalidValue(String),
 }
 
 impl From<Suite> for proto::Suite {
@@ -15,7 +22,21 @@ impl From<Suite> for proto::Suite {
     }
 }
 
-fn suite_to_proto(suite: proto::Suite) -> i32 {
+impl TryInto<Suite> for proto::Suite {
+    type Error = ProtoError;
+
+    fn try_into(self) -> Result<Suite, Self::Error> {
+        match self {
+            Self::Hearts => Ok(Suite::Hearts),
+            Self::Diamonds => Ok(Suite::Diamonds),
+            Self::Clubs => Ok(Suite::Clubs),
+            Self::Spades => Ok(Suite::Spades),
+            Self::Undefined => Err(ProtoError::InvalidValue(String::new())),
+        }
+    }
+}
+
+pub fn suite_to_proto(suite: proto::Suite) -> i32 {
     suite.into()
 }
 
@@ -25,6 +46,19 @@ impl From<&Card> for proto::Card {
             suite: suite_to_proto(src.suite().into()),
             rank: src.rank() as u32,
         }
+    }
+}
+
+impl TryInto<Card> for &proto::Card {
+    type Error = ProtoError;
+
+    fn try_into(self) -> Result<Card, Self::Error> {
+        Ok(Card {
+            suite: proto::Suite::from_i32(self.suite)
+                .ok_or_else(|| ProtoError::InvalidValue("suite".to_owned()))?
+                .try_into()?,
+            rank: self.rank as u8,
+        })
     }
 }
 
@@ -56,6 +90,48 @@ impl From<&MemoryGame> for proto::State {
             upturned: src.upturned().as_ref().map(|u| u.into()),
             foundations: src.foundations().iter().map(|f| f.into()).collect(),
             tableaus: src.tableaus().iter().map(|t| t.into()).collect(),
+        }
+    }
+}
+
+impl From<Action> for proto::Action {
+    fn from(src: Action) -> Self {
+        proto::Action {
+            action: Some(match src {
+                Action::Draw => proto::action::Action::Draw(proto::action::Draw {}),
+                Action::BuildFoundation { src } => {
+                    use proto::action::build_foundation;
+                    proto::action::Action::BuildFoundation(proto::action::BuildFoundation {
+                        source: Some(match src {
+                            FoundationSource::Upturned => {
+                                build_foundation::Source::Upturned(build_foundation::Upturned {})
+                            }
+                            FoundationSource::Tableau(index) => {
+                                build_foundation::Source::Tableau(build_foundation::Tableau {
+                                    index: index as u32,
+                                })
+                            }
+                        }),
+                    })
+                }
+                Action::BuildTableau { src, dst } => {
+                    use proto::action::build_tableau;
+                    proto::action::Action::BuildTableau(proto::action::BuildTableau {
+                        source: Some(match src {
+                            solitaire_backend::TableauSource::Upturned => {
+                                build_tableau::Source::Upturned(build_tableau::Upturned {})
+                            }
+                            solitaire_backend::TableauSource::Tableau { index, size } => {
+                                build_tableau::Source::Tableau(build_tableau::Tableau {
+                                    index: index as u32,
+                                    size: size as u32,
+                                })
+                            }
+                        }),
+                        destination_index: dst as u32,
+                    })
+                }
+            }),
         }
     }
 }
